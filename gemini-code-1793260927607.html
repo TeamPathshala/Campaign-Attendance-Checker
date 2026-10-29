@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaign Attendance & OCR Checker</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tesseract.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans text-slate-800">
+
+    <!-- Header Navigation -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-brand-600 p-2 rounded-lg">
+                        <i class="fa-solid fa-user-check text-xl text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-none">Campaign Attendance Checker</h1>
+                        <p class="text-xs text-slate-400 mt-1">OCR Screenshot & Mapping Tracker</p>
+                    </div>
+                </div>
+                <!-- Navigation Tabs -->
+                <nav class="flex space-x-2">
+                    <button id="tabBtnCheck" onclick="switchTab('check')" class="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 bg-brand-600 text-white">
+                        <i class="fa-solid fa-camera mr-2"></i>Check Attendance
+                    </button>
+                    <button id="tabBtnMapping" onclick="switchTab('mapping')" class="px-4 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors duration-150">
+                        <i class="fa-solid fa-sitemap mr-2"></i>Manage Mapping (<span id="mappingCountBadge">0</span>)
+                    </button>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6">
+
+        <!-- TAB 1: ATTENDANCE CHECKER -->
+        <div id="tabCheck" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                <!-- Left Column: Input Options (Paste/Upload & Text Area) -->
+                <div class="lg:col-span-5 space-y-6">
+                    <!-- Screenshot / Paste Area -->
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <h2 class="font-semibold text-slate-800 text-base mb-3 flex items-center">
+                            <i class="fa-solid fa-file-image text-brand-600 mr-2"></i> Screenshot OCR Input
+                        </h2>
+                        
+                        <!-- Drag & Drop / Paste Zone -->
+                        <div id="pasteZone" class="border-2 border-dashed border-slate-300 hover:border-brand-500 rounded-xl p-6 text-center cursor-pointer transition-all bg-slate-50 hover:bg-brand-50/30 flex flex-col items-center justify-center min-h-[160px] relative">
+                            <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                            <p class="text-sm font-medium text-slate-700">Paste screenshot here (<kbd class="px-1.5 py-0.5 text-xs bg-slate-200 border rounded font-mono">Ctrl+V</kbd>)</p>
+                            <p class="text-xs text-slate-400 mt-1">or click to upload image file</p>
+                            <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
+                        </div>
+
+                        <!-- OCR Progress Bar -->
+                        <div id="ocrProgressContainer" class="hidden mt-4 space-y-2">
+                            <div class="flex justify-between text-xs text-slate-600">
+                                <span id="ocrStatusText">Scanning text...</span>
+                                <span id="ocrPercentText">0%</span>
+                            </div>
+                            <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                                <div id="ocrProgressBar" class="bg-brand-600 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Image Preview Box -->
+                        <div id="imagePreviewContainer" class="hidden mt-4 relative rounded-lg overflow-hidden border border-slate-200 max-h-48 bg-slate-900 flex items-center justify-center">
+                            <img id="imagePreview" src="" alt="Screenshot Preview" class="max-h-48 object-contain">
+                            <button onclick="clearImage()" class="absolute top-2 right-2 bg-slate-900/80 hover:bg-red-600 text-white p-1.5 rounded-full text-xs transition">
+                                <i class="fa-solid fa-xmark w-4 h-4 flex items-center justify-center"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Direct Text Fallback Box -->
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="font-semibold text-slate-800 text-base flex items-center">
+                                <i class="fa-solid fa-font text-brand-600 mr-2"></i> Manual / Extracted Text
+                            </h2>
+                            <button onclick="clearText()" class="text-xs text-slate-500 hover:text-red-600 transition">
+                                <i class="fa-solid fa-trash-can mr-1"></i> Clear
+                            </button>
+                        </div>
+                        <textarea id="rawTextInput" rows="6" class="w-full p-3 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none custom-scrollbar" placeholder="Text extracted from OCR will appear here..."></textarea>
+                        
+                        <div class="mt-3 flex space-x-2">
+                            <button onclick="processAttendance()" class="flex-1 bg-brand-600 hover:bg-brand-700 text-white font-medium py-2.5 px-4 rounded-lg text-sm transition flex items-center justify-center shadow-sm">
+                                <i class="fa-solid fa-magnifying-glass mr-2"></i> Analyze Attendance
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Results & Missing Report -->
+                <div class="lg:col-span-7 space-y-6">
+                    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full min-h-[500px]">
+                        <!-- Results Header & Summary Stat Cards -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+                            <div>
+                                <h2 class="font-semibold text-slate-800 text-lg flex items-center">
+                                    <i class="fa-solid fa-clipboard-user text-amber-500 mr-2"></i> Not In Campaign Report
+                                </h2>
+                                <p class="text-xs text-slate-500">Members listed in mapping but missing from scanned active list</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="copyMissingList()" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg transition flex items-center shadow-sm">
+                                    <i class="fa-solid fa-copy mr-1.5"></i> Copy Missing List
+                                </button>
+                                <button onclick="exportCSV()" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-medium rounded-lg transition flex items-center border border-emerald-200">
+                                    <i class="fa-solid fa-file-excel mr-1.5"></i> Export CSV
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Metrics Banner -->
+                        <div class="grid grid-cols-3 gap-3 my-4">
+                            <div class="bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                                <span class="block text-xs font-medium text-slate-500">Total Mapped</span>
+                                <span id="statTotalMapped" class="text-xl font-bold text-slate-800">0</span>
+                            </div>
+                            <div class="bg-emerald-50 p-3 rounded-lg border border-emerald-100 text-center">
+                                <span class="block text-xs font-medium text-emerald-600">Present in Camp</span>
+                                <span id="statPresent" class="text-xl font-bold text-emerald-700">0</span>
+                            </div>
+                            <div class="bg-red-50 p-3 rounded-lg border border-red-100 text-center">
+                                <span class="block text-xs font-medium text-red-600">Missing / Absent</span>
+                                <span id="statMissing" class="text-xl font-bold text-red-700">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Search & Filter Bar -->
+                        <div class="flex flex-col sm:flex-row gap-2 mb-4">
+                            <div class="relative flex-1">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+                                <input type="text" id="searchResultInput" oninput="renderResults()" placeholder="Search missing member or manager..." class="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-brand-500 outline-none">
+                            </div>
+                            <select id="filterManagerSelect" onchange="renderResults()" class="border border-slate-300 rounded-lg px-3 py-1.5 text-xs text-slate-700 focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+                                <option value="ALL">All Managers</option>
+                            </select>
+                        </div>
+
+                        <!-- Missing Table Results -->
+                        <div class="flex-1 overflow-x-auto overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg max-h-[360px]">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-100 text-slate-600 uppercase font-semibold sticky top-0 border-b border-slate-200">
+                                    <tr>
+                                        <th class="px-4 py-2.5">#</th>
+                                        <th class="px-4 py-2.5">Member Email</th>
+                                        <th class="px-4 py-2.5">Manager Email</th>
+                                        <th class="px-4 py-2.5 text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="missingTableBody" class="divide-y divide-slate-100 bg-white">
+                                    <tr>
+                                        <td colspan="4" class="px-4 py-8 text-center text-slate-400">
+                                            <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+                                            Paste screenshot or text and click "Analyze Attendance" to see missing members.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- TAB 2: MAPPING MANAGEMENT -->
+        <div id="tabMapping" class="hidden space-y-6">
+            <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-4 mb-4">
+                    <div>
+                        <h2 class="font-semibold text-slate-800 text-lg flex items-center">
+                            <i class="fa-solid fa-users-gear text-brand-600 mr-2"></i> Master Mapping Database
+                        </h2>
+                        <p class="text-xs text-slate-500">View, edit, or add Member-to-Manager email mappings</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="toggleBulkModal(true)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition flex items-center">
+                            <i class="fa-solid fa-file-import mr-1.5"></i> Bulk Paste / Edit
+                        </button>
+                        <button onclick="addNewRow()" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg transition flex items-center">
+                            <i class="fa-solid fa-plus mr-1.5"></i> Add Mapping Row
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search & Filters -->
+                <div class="mb-4 max-w-md">
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-400"></i>
+                        <input type="text" id="searchMappingInput" oninput="renderMappingTable()" placeholder="Search member or manager in database..." class="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-brand-500 outline-none">
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="overflow-x-auto overflow-y-auto custom-scrollbar border border-slate-200 rounded-lg max-h-[500px]">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100 text-slate-600 uppercase font-semibold sticky top-0 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-2.5 w-12">#</th>
+                                <th class="px-4 py-2.5">Member Email</th>
+                                <th class="px-4 py-2.5">Manager Email</th>
+                                <th class="px-4 py-2.5 text-center w-24">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mappingTableBody" class="divide-y divide-slate-100 bg-white">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bulk Paste Modal -->
+    <div id="bulkModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 class="font-semibold text-slate-800 text-base">Bulk Edit / Paste Mappings</h3>
+                <button onclick="toggleBulkModal(false)" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-500">Paste tab-separated or space-separated list of <code>MemberEmail ManagerEmail</code> per line.</p>
+            <textarea id="bulkTextInput" rows="12" class="w-full p-3 border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-brand-500 outline-none custom-scrollbar" placeholder="member1@pw.live manager1@pw.live&#10;member2@pw.live manager1@pw.live"></textarea>
+            <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button onclick="toggleBulkModal(false)" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition">Cancel</button>
+                <button onclick="saveBulkMapping()" class="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-lg transition">Save Mappings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast Box -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-xl text-xs font-medium transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center space-x-2 pointer-events-none">
+        <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
+        <span id="toastMsg">Notification message</span>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Initial Pre-loaded Mapping Data
+        let mappingData = [
+            { member: "wasil.khan@pw.live", manager: "vishal.kumar16@pw.live" },
+            { member: "deepika.gupta@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "shahan.nazeer@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "parsenjeet.das@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "anupam.upadhyay1@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "rupali.bansod@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "uddeshya.srivastava@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "alka.kumari@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "rajat.seth@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "pooja.ambhore@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "shweta.agrahari@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "nenshi.gupta@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "manwati.srivastava@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "ayush.srivastava1@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "atul.raghuwanshi@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "kirti.jagtap@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "ayush.banerjee@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "ankita.sinha@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "gunjan.chandwani@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "triloki.sharma@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "ayushi.gupta2@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "priyanka.singh6@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "shazeb.chowdhary@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "chandrahash.sonkar@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "rajat.chauhan@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "kajal.kariwal@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "divya.panwar@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "neetu.2@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "anurag.srivastava@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "anjali.goplani@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "pooja.saini1@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "kritika.kumari@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "khushi.kumari@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "rishika.parihar@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "nikita.tanwar@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "shivansh.mehrotra@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "laraib.khan@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "rohit.dubey2@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "sagar.sharma6@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "tanya.singh2@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "areeba.fatima@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "priyanka.shende@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "supriya.bharti@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "utsav.kumar1@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "simran.sharma1@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "kuldeep.chandravanshi@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "hemant.pramanik@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "mehak.rai@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "praveen.patel@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "sumit.gaurav@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "alisha.khan2@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "neha.singh10@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "shweta.chaudhary@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "priya.gupta5@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "aman.rai1@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "payal.ekunkar@pw.live", manager: "wasil.khan@pw.live" },
+            { member: "rishita.2@pw.live", manager: "purvish.joshi@pw.live" },
+            { member: "akarshita.srivastava@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "karishma.2@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "manish.kumar43@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "sudhanshu.verma1@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "supriya.patel@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "aashif.mohammad@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "sandeep.jha@pw.live", manager: "ravi.sharma11@pw.live" },
+            { member: "pooja.kumari7@pw.live", manager: "salman.hakak@pw.live" },
+            { member: "afrin.fulari@pw.live", manager: "wasil.khan@pw.live" }
+        ];
+
+        let missingResults = [];
+
+        // DOM Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            updateMappingBadge();
+            renderMappingTable();
+            populateManagerFilter();
+            
+            // Clipboard Paste Event Listener
+            document.addEventListener('paste', handleGlobalPaste);
+
+            // File input listener
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+        });
+
+        // Tab Switcher
+        function switchTab(tab) {
+            const tabCheck = document.getElementById('tabCheck');
+            const tabMapping = document.getElementById('tabMapping');
+            const btnCheck = document.getElementById('tabBtnCheck');
+            const btnMapping = document.getElementById('tabBtnMapping');
+
+            if (tab === 'check') {
+                tabCheck.classList.remove('hidden');
+                tabMapping.classList.add('hidden');
+                btnCheck.className = "px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 bg-brand-600 text-white";
+                btnMapping.className = "px-4 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors duration-150";
+            } else {
+                tabCheck.classList.add('hidden');
+                tabMapping.classList.remove('hidden');
+                btnCheck.className = "px-4 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors duration-150";
+                btnMapping.className = "px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150 bg-brand-600 text-white";
+            }
+        }
+
+        // Global Clipboard Paste Handler
+        function handleGlobalPaste(e) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    processImageFile(blob);
+                    showToast("Image pasted from clipboard!", "info");
+                    break;
+                }
+            }
+        }
+
+        // File Select Handler
+        function handleFileSelect(e) {
+            if (e.target.files && e.target.files[0]) {
+                processImageFile(e.target.files[0]);
+            }
+        }
+
+        // Process Image with Tesseract.js
+        async function processImageFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = document.getElementById('imagePreview');
+                img.src = e.target.result;
+                document.getElementById('imagePreviewContainer').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+
+            // UI Progress Display
+            const progressContainer = document.getElementById('ocrProgressContainer');
+            const progressBar = document.getElementById('ocrProgressBar');
+            const statusText = document.getElementById('ocrStatusText');
+            const percentText = document.getElementById('ocrPercentText');
+
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            statusText.innerText = 'Initializing OCR Engine...';
+            percentText.innerText = '0%';
+
+            try {
+                const worker = await Tesseract.createWorker('eng');
+                
+                const ret = await worker.recognize(file, {}, {
+                    logger: m => {
+                        if (m.status === 'recognizing text') {
+                            const pct = Math.round((m.progress || 0) * 100);
+                            progressBar.style.width = pct + '%';
+                            percentText.innerText = pct + '%';
+                            statusText.innerText = 'Scanning screenshot text...';
+                        } else {
+                            statusText.innerText = m.status;
+                        }
+                    }
+                });
+
+                await worker.terminate();
+
+                const text = ret.data.text;
+                const textInput = document.getElementById('rawTextInput');
+                textInput.value = (textInput.value ? textInput.value + '\n\n' : '') + text;
+
+                showToast("OCR complete! Text extracted.", "success");
+                processAttendance(); // Automatically run comparison
+            } catch (err) {
+                console.error("OCR Error: ", err);
+                showToast("Failed to perform OCR on image.", "error");
+            } finally {
+                progressContainer.classList.add('hidden');
+            }
+        }
+
+        // Clear Image Preview
+        function clearImage() {
+            document.getElementById('imagePreview').src = '';
+            document.getElementById('imagePreviewContainer').classList.add('hidden');
+            document.getElementById('fileInput').value = '';
+        }
+
+        // Clear Raw Text
+        function clearText() {
+            document.getElementById('rawTextInput').value = '';
+            processAttendance();
+        }
+
+        // Process Attendance & Match Missing Members
+        function processAttendance() {
+            const rawText = document.getElementById('rawTextInput').value.toLowerCase();
+
+            if (!rawText.trim()) {
+                missingResults = [];
+                renderResults();
+                return;
+            }
+
+            // Clean up text lines for matching
+            const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+
+            missingResults = mappingData.filter(item => {
+                const memberFull = item.member.toLowerCase();
+                const prefix = memberFull.split('@')[0]; // e.g. "alisha.khan2"
+
+                // Check direct presence of full email
+                if (rawText.includes(memberFull)) {
+                    return false; // Present
+                }
+
+                // Check presence of prefix followed by typical truncation artifacts
+                const isTruncatedMatch = lines.some(line => line.includes(prefix));
+
+                if (isTruncatedMatch) {
+                    return false; // Present
+                }
+
+                return true; // Missing
+            });
+
+            renderResults();
+            showToast(`Attendance checked: ${missingResults.length} absent members found.`, "info");
+        }
+
+        // Get Currently Filtered Results
+        function getFilteredResults() {
+            const searchVal = document.getElementById('searchResultInput').value.toLowerCase();
+            const filterMgr = document.getElementById('filterManagerSelect').value;
+
+            return missingResults.filter(item => {
+                const matchesSearch = item.member.toLowerCase().includes(searchVal) || 
+                                     item.manager.toLowerCase().includes(searchVal);
+                const matchesManager = filterMgr === 'ALL' || item.manager === filterMgr;
+                return matchesSearch && matchesManager;
+            });
+        }
+
+        // Render Results Table & Cards
+        function renderResults() {
+            const tbody = document.getElementById('missingTableBody');
+            
+            // Stats update
+            const totalMapped = mappingData.length;
+            const missingCount = missingResults.length;
+            const presentCount = totalMapped - missingCount;
+
+            document.getElementById('statTotalMapped').innerText = totalMapped;
+            document.getElementById('statPresent').innerText = presentCount;
+            document.getElementById('statMissing').innerText = missingCount;
+
+            const filtered = getFilteredResults();
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-4 py-8 text-center text-slate-400">
+                            ${missingResults.length === 0 && document.getElementById('rawTextInput').value.trim() !== '' 
+                                ? '<i class="fa-solid fa-circle-check text-emerald-500 text-3xl mb-2 block"></i> All mapped members are present in campaign!' 
+                                : '<i class="fa-solid fa-filter text-slate-300 text-3xl mb-2 block"></i> No missing members found matching current filter.'}
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((item, idx) => `
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="px-4 py-2.5 font-mono text-slate-400">${idx + 1}</td>
+                    <td class="px-4 py-2.5 font-medium text-slate-800">${escapeHtml(item.member)}</td>
+                    <td class="px-4 py-2.5 text-slate-600">${escapeHtml(item.manager)}</td>
+                    <td class="px-4 py-2.5 text-center">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-800">
+                            Not in Camp
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Populate Manager Dropdown Filter
+        function populateManagerFilter() {
+            const select = document.getElementById('filterManagerSelect');
+            const managers = [...new Set(mappingData.map(m => m.manager))].sort();
+            
+            select.innerHTML = `<option value="ALL">All Managers (${managers.length})</option>` + 
+                managers.map(mgr => `<option value="${escapeHtml(mgr)}">${escapeHtml(mgr)}</option>`).join('');
+        }
+
+        // Copy Missing List to Clipboard (Updated for robust execution)
+        async function copyMissingList() {
+            const activeList = getFilteredResults();
+
+            if (activeList.length === 0) {
+                showToast("No missing members to copy!", "error");
+                return;
+            }
+
+            // Group missing members by manager
+            const grouped = {};
+            activeList.forEach(item => {
+                if (!grouped[item.manager]) grouped[item.manager] = [];
+                grouped[item.manager].push(item.member);
+            });
+
+            let formattedText = `🚨 *Campaign Absentee Report (${activeList.length} Missing)*\n\n`;
+            for (const [mgr, members] of Object.entries(grouped)) {
+                formattedText += `*Manager:* ${mgr}\n`;
+                members.forEach(m => formattedText += ` • ${m}\n`);
+                formattedText += `\n`;
+            }
+
+            const success = await copyToClipboard(formattedText.trim());
+            if (success) {
+                showToast(`Copied ${activeList.length} missing members to clipboard!`, "success");
+            } else {
+                showToast("Failed to copy. Please try manually.", "error");
+            }
+        }
+
+        // Export Missing List to CSV
+        function exportCSV() {
+            const activeList = getFilteredResults();
+            if (activeList.length === 0) {
+                showToast("No missing data to export!", "error");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,Member Email,Manager Email,Status\n";
+            activeList.forEach(row => {
+                csvContent += `"${row.member}","${row.manager}","Not in Campaign"\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `campaign_absentee_report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast("CSV file exported.", "success");
+        }
+
+        // --- MAPPING MANAGEMENT FUNCTIONS ---
+
+        function updateMappingBadge() {
+            document.getElementById('mappingCountBadge').innerText = mappingData.length;
+        }
+
+        function renderMappingTable() {
+            const tbody = document.getElementById('mappingTableBody');
+            const searchVal = document.getElementById('searchMappingInput').value.toLowerCase();
+
+            let filtered = mappingData.filter(item => 
+                item.member.toLowerCase().includes(searchVal) || 
+                item.manager.toLowerCase().includes(searchVal)
+            );
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" class="px-4 py-8 text-center text-slate-400">
+                            No mapping records found.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((item, idx) => `
+                <tr class="hover:bg-slate-50 transition">
+                    <td class="px-4 py-2 font-mono text-slate-400">${idx + 1}</td>
+                    <td class="px-4 py-2">
+                        <input type="email" value="${escapeHtml(item.member)}" onchange="updateMappingItem(${idx}, 'member', this.value)" class="w-full px-2 py-1 border border-transparent hover:border-slate-300 focus:border-brand-500 rounded text-xs outline-none bg-transparent focus:bg-white transition">
+                    </td>
+                    <td class="px-4 py-2">
+                        <input type="email" value="${escapeHtml(item.manager)}" onchange="updateMappingItem(${idx}, 'manager', this.value)" class="w-full px-2 py-1 border border-transparent hover:border-slate-300 focus:border-brand-500 rounded text-xs outline-none bg-transparent focus:bg-white transition">
+                    </td>
+                    <td class="px-4 py-2 text-center">
+                        <button onclick="deleteMappingItem(${idx})" class="text-slate-400 hover:text-red-600 transition p-1">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateMappingItem(index, key, val) {
+            mappingData[index][key] = val.trim();
+            populateManagerFilter();
+            showToast("Mapping updated.", "info");
+        }
+
+        function deleteMappingItem(index) {
+            mappingData.splice(index, 1);
+            updateMappingBadge();
+            renderMappingTable();
+            populateManagerFilter();
+            showToast("Mapping row removed.", "info");
+        }
+
+        function addNewRow() {
+            mappingData.unshift({ member: "", manager: "" });
+            updateMappingBadge();
+            renderMappingTable();
+        }
+
+        function toggleBulkModal(show) {
+            const modal = document.getElementById('bulkModal');
+            if (show) {
+                const bulkText = mappingData.map(m => `${m.member}\t${m.manager}`).join('\n');
+                document.getElementById('bulkTextInput').value = bulkText;
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function saveBulkMapping() {
+            const text = document.getElementById('bulkTextInput').value;
+            const lines = text.split('\n');
+            const newMapping = [];
+
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    newMapping.push({
+                        member: parts[0].trim(),
+                        manager: parts[1].trim()
+                    });
+                }
+            });
+
+            if (newMapping.length > 0) {
+                mappingData = newMapping;
+                updateMappingBadge();
+                renderMappingTable();
+                populateManagerFilter();
+                toggleBulkModal(false);
+                showToast(`Saved ${mappingData.length} mappings successfully.`, "success");
+            } else {
+                showToast("Invalid format. Please enter 'MemberEmail ManagerEmail' per line.", "error");
+            }
+        }
+
+        // Robust Copy to Clipboard with Modern API + Fallback
+        async function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (err) {
+                    console.warn("Clipboard API failed, trying fallback...", err);
+                }
+            }
+
+            // Fallback for non-HTTPS or non-supported contexts
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-999999px";
+                textArea.style.top = "-999999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return successful;
+            } catch (err) {
+                console.error('Fallback copy failed', err);
+                return false;
+            }
+        }
+
+        // Utility: Toast Popup
+        function showToast(msg, type = "info") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            const toastIcon = document.getElementById('toastIcon');
+
+            toastMsg.innerText = msg;
+            
+            if (type === 'success') {
+                toastIcon.className = "fa-solid fa-circle-check text-emerald-400 text-sm";
+            } else if (type === 'error') {
+                toastIcon.className = "fa-solid fa-circle-exclamation text-red-400 text-sm";
+            } else {
+                toastIcon.className = "fa-solid fa-circle-info text-blue-400 text-sm";
+            }
+
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Utility: HTML Escaper
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
